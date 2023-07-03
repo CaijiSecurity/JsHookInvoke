@@ -1,11 +1,11 @@
 var hookInvokeTask;
-
+var hookInvokeServerUrl = "{{hook_invoke_server_url}}"
 function hookAgentPush(url, method, data) {
     const xhr = new XMLHttpRequest();
-    xhr.open(method, url + "?retData=" + data, true);
-
+    xhr.open(method, url, true);
+    xhr.setRequestHeader('Conten-Type', 'application/x-www-form-urlencoded')
     xhr.onload = () => { };
-    xhr.send();
+    xhr.send("retData=" + data);
 }
 
 
@@ -24,7 +24,7 @@ function hookAgentGet(url, method, callBack) {
 function loopTask(targetFuncs) {
     let resultDate;
     hookAgentGet(
-        "http://127.0.0.1:8992/get",
+        hookInvokeServerUrl,
         "GET",
         (tmpData) => {
             resultDate = tmpData;
@@ -32,7 +32,7 @@ function loopTask(targetFuncs) {
                 resultDate = func(resultDate);
             }
             console.log(resultDate);
-            hookAgentPush("http://127.0.0.1:8992/push", "GET", resultDate);
+            hookAgentPush(hookInvokeServerUrl, "POST", resultDate);
         }
     );
 }

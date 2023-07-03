@@ -9,9 +9,22 @@ Config = {
     "HTTP_INVOKE_SERVER_HOST": "127.0.0.1",
     "HTTP_INVOKE_SERVER_PORT": 8992,
     "HTTP_INVOKE_SERVER_PATH": "/invokeServer",
+    "HTTP_INVOKE_AGENT_JS_PATH": "/hookAgent.js",
     "HOOK_REQUEST_KEY": "justd01t",
     "SCRIPT_PARENT_DIR": os.path.split(os.path.realpath(__file__))[0]
 }
+
+Replace_Rule_Tmpl = '''
+请将以下自动替换规则配置到burpsuite：
+Type: Response body
+
+<head>
+    ↓
+  替换成
+    ↓
+<head><script type="text/javascript" src="http://{host}:{port}{agent_js_path}"></script>
+
+'''
 
 class CaijiSecHTTPServer(HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, config_dict, bind_and_activate: bool = ...) -> None:
@@ -26,9 +39,8 @@ class CaijiSecHTTPServer(HTTPServer):
 class HookInvokeServerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         Config = self.server.config_dict
-        # print(self.headers)
-        # print(self.command)
-        print(self.path)
+
+        # 测试demo部分 开始 #
         if self.path == "/test.html":
             with open(os.path.join(Config["SCRIPT_PARENT_DIR"], "testwww/test.html"), "r") as f:
                 res_data = f.read()
@@ -36,65 +48,35 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
         elif self.path == "/test.js":
             with open(os.path.join(Config["SCRIPT_PARENT_DIR"], "testwww/test.js"), "r") as f:
                 res_data = f.read()
-            self._caiji_easy_response(res_data, "application/javascript")
-        elif self.path == "/hookAgent.js":
+            self._caiji_easy_response(res_data, "application/javascript;charset=UTF-8")
+        # 测试demo部分 结束 #
+
+        elif self.path == Config["HTTP_INVOKE_AGENT_JS_PATH"]:
             with open(os.path.join(Config["SCRIPT_PARENT_DIR"], "hookAgent.js"), "r") as f:
                 res_data = f.read()
-            self._caiji_easy_response(res_data, "application/javascript")
-        elif self.path == "/get":
-            res_data = "testHelloGet"
-            self._caiji_easy_response(res_data, "application/javascript")
-        elif self.path == "/push":
-            res_data = "testHelloPush"
-            self._caiji_easy_response(res_data, "application/javascript") 
+            res_data = res_data.replace("{{hook_invoke_server_url}}", "http://{0}:{1}{2}".format(
+                Config["HTTP_INVOKE_SERVER_HOST"],
+                Config["HTTP_INVOKE_SERVER_PORT"],
+                Config["HTTP_INVOKE_SERVER_PATH"]
+            ))
+            self._caiji_easy_response(res_data, "application/javascript;charset=UTF-8")
+        elif self.path == Config["HTTP_INVOKE_SERVER_PATH"]:
+            res_data = "testHelloGet你好"
+            self._caiji_easy_response(res_data, "text/plain;charset=UTF-8")
         else:
             self._caiji_easy_response("开发中...", "text/html;charset=UTF-8")
 
 
     def do_POST(self):
         Config = self.server.config_dict
-        # print(self.headers)
-        # print(self.command)
-        # print(self.path)
         if self.path == Config["HTTP_INVOKE_SERVER_PATH"]:
             req_datas = self.rfile.read(int(self.headers['content-length']))
-            print("[HookServer]开始接受client发送的数据")
             req = req_datas.decode('utf-8')
-            print("[HookServer]接收到的内容")
+            print("[HookInvokeServerReq]接收到的内容")
             print(req)
-            print("[HookServer]" + "-"*50)
-            try:
-                req_dict = json.loads(req)
-            except json.JSONDecodeError as e:
-                print("[HookServer]无法解析JSON，返回")
-                return
-            print("[HookServer]已接受client发送的数据")
-            if "key" not in req_dict or req_dict["key"] != Config["HOOK_REQUEST_KEY"]:
-                print("[HookServer]无法验证Key，非预期请求，返回")
-                return
-            res_dict = "HOOKPROXY"
-            print(Config["NEED_START_PROXY_SERVER"])
-            
-            # 如果不需要再转发一次，直接将请求包的data封装返回
-            res_dict = req_dict["data"]
-
-            res_dict_2 = {
-                "data": res_dict
-            }
-            res_data = json.dumps(res_dict_2)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Credentials', 'true')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-type")
-            self.end_headers()
-
-            print("[HookServer]返回的内容")
-            print(res_data)
-            print("[HookServer]" + "-"*50)
-            
-            self.wfile.write(res_data.encode("utf-8"))
+            print("[HookInvokeServerReq]" + "-"*50)
+            res_data = "OK"
+            self._caiji_easy_response(res_data, "text/plain;charset=UTF-8")
         else:
             print("[HookServer]非预期的请求路径，丢弃！")
             return
@@ -118,17 +100,15 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-type")
         self.end_headers()
 
-        print("[HookInvokeServer]返回的内容")
+        print("[HookInvokeServerResp]返回的内容")
         print(res_data)
-        print("[HookInvokeServer]" + "-"*50)
+        print("[HookInvokeServerResp]" + "-"*50)
         
         self.wfile.write(res_data.encode("utf-8"))
 
 
-    
-
 def start_hook_invoke_server(config_dict):
-    hook_host = (Config["HTTP_INVOKE_SERVER_HOST"], Config["HTTP_INVOKE_SERVER_PORT"])
+    hook_host = (config_dict["HTTP_INVOKE_SERVER_HOST"], config_dict["HTTP_INVOKE_SERVER_PORT"])
     hook_server = CaijiSecHTTPServer(hook_host, HookInvokeServerHandler, config_dict)
     print("Starting Hook Invoke Server, listen at: http://%s:%s" % hook_host)
     hook_server.serve_forever()
@@ -144,6 +124,33 @@ def get_ipv4_addr():
 
 def main():
     # print(get_ipv4_addr())
+    ipv4_addr_list = get_ipv4_addr()
+    if len(ipv4_addr_list) > 0:
+        if len(ipv4_addr_list) > 1:
+            print("检测到本地有以下 {0} 个ipv4地址，请选择要监听的地址：".format(
+                len(ipv4_addr_list)
+            ))
+            for idx in range(len(ipv4_addr_list)):
+                print("[{0}] {1}".format(
+                    idx + 1,
+                    ipv4_addr_list[idx]
+                ))
+            try:
+                chose_ipv4_addr = ipv4_addr_list[int(input("请输入编号[1]：")) - 1]
+            except:
+                chose_ipv4_addr = ipv4_addr_list[0]
+        else:
+            chose_ipv4_addr = ipv4_addr_list[0]
+        print("将会监听地址：{0}".format(
+            chose_ipv4_addr
+        ))
+        Config["HTTP_INVOKE_SERVER_HOST"] = chose_ipv4_addr
+    print(Replace_Rule_Tmpl.format(
+        host = Config["HTTP_INVOKE_SERVER_HOST"],
+        port = Config["HTTP_INVOKE_SERVER_PORT"],
+        agent_js_path = Config["HTTP_INVOKE_AGENT_JS_PATH"]
+    ))
+
     hook_invoke_server_process = Process(target=start_hook_invoke_server, args=(Config,))
     hook_invoke_server_process.start()
     
