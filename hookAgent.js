@@ -1,5 +1,7 @@
 var hookInvokeTask;
 var hookInvokeServerUrl = "{{hook_invoke_server_url}}"
+
+// 推回处理后的数据
 function hookAgentPush(url, method, data) {
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
@@ -8,7 +10,7 @@ function hookAgentPush(url, method, data) {
     xhr.send("retData=" + data);
 }
 
-
+// 拉取待处理的数据
 function hookAgentGet(url, method, callBack) {
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
@@ -20,7 +22,7 @@ function hookAgentGet(url, method, callBack) {
     xhr.send();
 }
 
-
+// 轮询任务
 function loopTask(targetFuncs) {
     let resultDate;
     hookAgentGet(
@@ -37,11 +39,12 @@ function loopTask(targetFuncs) {
     );
 }
 
-// 开始轮训
+// 开始Agent轮询
 function startHookInvoke(targetFuncs) {
     hookInvokeTask = setInterval(loopTask, 500, targetFuncs);
 }
 
+// 停止Agent轮询
 function stopHookInvoke() {
     clearInterval(hookInvokeTask);
 }
