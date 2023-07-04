@@ -1,13 +1,15 @@
 var hookInvokeTask;
-var hookInvokeServerUrl = "{{hook_invoke_server_url}}"
+var hookInvokeServerUrl = "{{hook_invoke_server_url}}";
 
 // 推回处理后的数据
-function hookAgentPush(url, method, data) {
+function hookAgentPush(url, method, id, data) {
+    let sendData = { id: id, resultData: data };
+    let sendJson = JSON.stringify(sendData);
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
-    xhr.setRequestHeader('Conten-Type', 'application/x-www-form-urlencoded')
+    xhr.setRequestHeader('Conten-Type', 'application/json');
     xhr.onload = () => { };
-    xhr.send("retData=" + data);
+    xhr.send(sendJson);
 }
 
 // 拉取待处理的数据
@@ -15,9 +17,15 @@ function hookAgentGet(url, method, callBack) {
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
 
-    xhr.onload = () => {
-        let tmpData = xhr.responseText;
-        callBack(tmpData);
+    xhr.onreadystatechange = () => {
+        if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+            let responseText = xhr.responseText;
+            let responseObj = JSON.parse(responseText);
+            if ("id" in responseObj && "rawData" in responseObj) {
+                console.log(responseObj);
+                callBack(responseObj);
+            }
+        }
     };
     xhr.send();
 }
@@ -28,20 +36,21 @@ function loopTask(targetFuncs) {
     hookAgentGet(
         hookInvokeServerUrl,
         "GET",
-        (tmpData) => {
-            resultDate = tmpData;
+        (responseObj) => {
+            let id = responseObj["id"];
+            let resultData = responseObj["rawData"];
             for (const func of targetFuncs) {
-                resultDate = func(resultDate);
+                resultData = func(resultData);
             }
-            console.log(resultDate);
-            hookAgentPush(hookInvokeServerUrl, "POST", resultDate);
+            console.log(resultData);
+            hookAgentPush(hookInvokeServerUrl, "POST", id, resultData);
         }
     );
 }
 
 // 开始Agent轮询
 function startHookInvoke(targetFuncs) {
-    hookInvokeTask = setInterval(loopTask, 500, targetFuncs);
+    hookInvokeTask = setInterval(loopTask, 100, targetFuncs);
 }
 
 // 停止Agent轮询

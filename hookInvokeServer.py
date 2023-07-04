@@ -1,9 +1,12 @@
 import os
+import sys
 import json
 import socket
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from multiprocessing import Process
+
+from sqlite import init_db, insert_raw_data, update_result_data, get_next_raw_data, get_result, close_conn
 
 Config = {
     "HTTP_INVOKE_SERVER_HOST": "127.0.0.1",
@@ -61,8 +64,11 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
             ))
             self._caiji_easy_response(res_data, "application/javascript;charset=UTF-8")
         elif self.path == Config["HTTP_INVOKE_SERVER_PATH"]:
-            res_data = "testHelloGet你好"
-            self._caiji_easy_response(res_data, "text/plain;charset=UTF-8")
+            id_and_raw_data = get_next_raw_data() or {}
+            # if id_and_raw_data:
+            res_data = json.dumps(id_and_raw_data)
+            # else:
+            self._caiji_easy_response(res_data, "application/json")
         else:
             self._caiji_easy_response("开发中...", "text/html;charset=UTF-8")
 
@@ -75,6 +81,15 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
             print("[HookInvokeServerReq]接收到的内容")
             print(req)
             print("[HookInvokeServerReq]" + "-"*50)
+            try:
+                req_dict = json.loads(req)
+            except json.JSONDecodeError as e:
+                print("[HookInvokeServerReq]无法解析JSON，返回")
+                return
+            if "id" not in req_dict or "resultData" not in req_dict:
+                print("[HookInvokeServerReq]请求缺少必要数据，返回")
+                return
+            update_result_data(req_dict['id'], req_dict['resultData'])
             res_data = "OK"
             self._caiji_easy_response(res_data, "text/plain;charset=UTF-8")
         else:
@@ -157,4 +172,10 @@ def main():
     hook_invoke_server_process.join()
 
 if __name__ == '__main__':
-    main()
+    init_db()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("ctrl+c结束！")
+        close_conn()
+        sys.exit(0)
