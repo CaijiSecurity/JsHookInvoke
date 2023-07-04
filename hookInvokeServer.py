@@ -1,10 +1,13 @@
 import os
 import sys
+import time
 import json
 import socket
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
+from socketserver import ThreadingMixIn
 from multiprocessing import Process
+
 
 from sqlite import init_db, insert_raw_data, update_result_data, get_next_raw_data, get_result, close_conn
 
@@ -13,7 +16,10 @@ Config = {
     "HTTP_INVOKE_SERVER_PORT": 8992,
     "HTTP_INVOKE_SERVER_PATH": "/invokeServer",
     "HTTP_INVOKE_AGENT_JS_PATH": "/hookAgent.js",
-    "HOOK_REQUEST_KEY": "justd01t",
+    "HTTP_INVOKE_CLIENT_PATH": "/invokeClient",
+    "HTTP_INVOKE_CLIENT_API_PATH": "/invokeClientApi",
+    "HTTP_INVOKE_RESULT_RETRY_NUM": 5,
+    "HTTP_INVOKE_RESULT_WAIT_TIME": 0.5,
     "SCRIPT_PARENT_DIR": os.path.split(os.path.realpath(__file__))[0]
 }
 
@@ -29,7 +35,7 @@ Type: Response body
 
 '''
 
-class CaijiSecHTTPServer(HTTPServer):
+class CaijiSecHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, config_dict, bind_and_activate: bool = ...) -> None:
         super().__init__(server_address, RequestHandlerClass, bind_and_activate)
         self.config_dict = config_dict
@@ -65,9 +71,7 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
             self._caiji_easy_response(res_data, "application/javascript;charset=UTF-8")
         elif self.path == Config["HTTP_INVOKE_SERVER_PATH"]:
             id_and_raw_data = get_next_raw_data() or {}
-            # if id_and_raw_data:
             res_data = json.dumps(id_and_raw_data)
-            # else:
             self._caiji_easy_response(res_data, "application/json")
         else:
             self._caiji_easy_response("开发中...", "text/html;charset=UTF-8")
@@ -92,6 +96,48 @@ class HookInvokeServerHandler(BaseHTTPRequestHandler):
             update_result_data(req_dict['id'], req_dict['resultData'])
             res_data = "OK"
             self._caiji_easy_response(res_data, "text/plain;charset=UTF-8")
+        elif self.path == Config["HTTP_INVOKE_CLIENT_API_PATH"]:
+            req_datas = self.rfile.read(int(self.headers['content-length']))
+            req = req_datas.decode('utf-8')
+            print("[HookInvokeServerApiReq]接收到的内容")
+            print(req)
+            print("[HookInvokeServerApiReq]" + "-"*50)
+            try:
+                req_dict = json.loads(req)
+            except json.JSONDecodeError as e:
+                print("[HookInvokeServerReq]无法解析JSON，返回")
+                return
+            if "rawData" in req_dict:
+                new_id = insert_raw_data(req_dict['rawData'])
+                ret_dict = {
+                    "id": new_id
+                }
+                for i in range(Config["HTTP_INVOKE_RESULT_RETRY_NUM"] + 1):
+                    time.sleep(Config["HTTP_INVOKE_RESULT_WAIT_TIME"])
+                    print("尝试获取结果...")
+                    resultData = get_result(new_id)
+                    if resultData:
+                        ret_dict.update({
+                            "resultData": resultData
+                        })
+                        break
+                res_data = json.dumps(ret_dict)
+                self._caiji_easy_response(res_data, "application/json")
+            elif "id" in req_dict:
+                id = req_dict['id']
+                ret_dict = {
+                    "id": id
+                }
+                resultData = get_result(id)
+                if resultData:
+                    ret_dict.update({
+                        "resultData": resultData
+                    })
+                res_data = json.dumps(ret_dict)
+                self._caiji_easy_response(res_data, "application/json")
+            else:
+                print("[HookInvokeServerReq]请求缺少必要数据，返回")
+                return
         else:
             print("[HookServer]非预期的请求路径，丢弃！")
             return

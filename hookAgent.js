@@ -9,6 +9,7 @@ function hookAgentPush(url, method, id, data) {
     xhr.open(method, url, true);
     xhr.setRequestHeader('Conten-Type', 'application/json');
     xhr.onload = () => { };
+    console.log(sendJson);
     xhr.send(sendJson);
 }
 
@@ -50,7 +51,8 @@ function loopTask(targetFuncs) {
 
 // 开始Agent轮询
 function startHookInvoke(targetFuncs) {
-    hookInvokeTask = setInterval(loopTask, 100, targetFuncs);
+    // setInterval 理论上最小时间差是 10 毫秒，但是因为实际情况是队列中的任务并不会及时执行，耗时可能会比设置的延时时间久
+    hookInvokeTask = setInterval(loopTask, 300, targetFuncs);
 }
 
 // 停止Agent轮询
