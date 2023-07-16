@@ -15,6 +15,7 @@ def init_db():
     '''
     c = sqlite_conn.cursor()
     with lock:
+        # 创建 CAIJIDATA 表
         try:
             c.execute(
                 '''CREATE TABLE CAIJIDATA
@@ -28,7 +29,20 @@ def init_db():
             )
             sqlite_conn.commit()
         except Exception as e:
-            traceback.print_exc()
+            # traceback.print_exc()
+            print(e)
+            sqlite_conn.rollback()
+        # 创建 AGENTS 表
+        try:
+            c.execute(
+                '''CREATE TABLE AGENTS
+                    (AGENTID     TEXT     PRIMARY KEY     NOT NULL,
+                    DESCRIPTION    TEXT    NOT NULL);
+                '''
+            )
+            sqlite_conn.commit()
+        except Exception as e:
+            # traceback.print_exc()
             print(e)
             sqlite_conn.rollback()
 
